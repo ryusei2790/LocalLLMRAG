@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Qdrant storage (ベクトルデータベースのデータ)
+qdrant_storage/
+
+# Model files (大きなモデルファイルは通常Gitで管理しない)
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.h5
+*.onnx
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Query results
+queryResult.txt
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+Qwen/

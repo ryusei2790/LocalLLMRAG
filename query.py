@@ -12,10 +12,16 @@ EMB = EmbeddingCfg()
 QDR = QdrantCfg()
 LLM = LLMCfg()
 
+# -----------------------------
+# 埋め込みモデル読み込み
+# -----------------------------
 def load_embedder():
-    model = SentenceTransformer(EMB.model_name)
+    model = SentenceTransformer(EMB.model_name, device="cuda")
     return model
 
+# -----------------------------
+# Qdrant 検索
+# -----------------------------
 def search(
     client: QdrantClient,
     emb_model: SentenceTransformer,
@@ -36,8 +42,10 @@ def search(
     )
     return [(h.score, h.payload) for h in hits]
 
+# -----------------------------
+# プロンプト作成
+# -----------------------------
 def build_prompt(query: str, contexts: List[dict]) -> List[dict]:
-    # Chatテンプレ：根拠を示しつつ回答
     context_strs = []
     for i, c in enumerate(contexts, 1):
         context_strs.append(f"[{i}] {c['text']}\n(出典: {c.get('source','')}, chunk {c.get('chunk_id','')})")
@@ -57,6 +65,9 @@ def build_prompt(query: str, contexts: List[dict]) -> List[dict]:
         {"role": "user", "content": user}
     ]
 
+# -----------------------------
+# LLM 読み込み
+# -----------------------------
 def load_llm():
     dtype = None
     if LLM.dtype == "bfloat16":
@@ -75,6 +86,9 @@ def load_llm():
     )
     return tok, model
 
+# -----------------------------
+# チャット生成
+# -----------------------------
 def chat(model, tok, messages: List[dict]) -> str:
     text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tok(text, return_tensors="pt").to(model.device)
@@ -88,6 +102,9 @@ def chat(model, tok, messages: List[dict]) -> str:
         )
     return tok.decode(out[0], skip_special_tokens=True)
 
+# -----------------------------
+# メイン処理
+# -----------------------------
 def main():
     query_text = input("質問を入力してください: ").strip()
     emb = load_embedder()
@@ -101,10 +118,6 @@ def main():
     answer = chat(model, tok, msgs)
     print("\n=== 回答 ===\n")
     print(answer)
-
-    # print("\n=== 参照コンテキスト（Top-5） ===")
-    # for i, (score, payload) in enumerate(hits, 1):
-    #     print(f"\n[{i}] score={score:.4f} | {payload.get('source','')}, chunk={payload.get('chunk_id')}\n{payload['text'][:300]}...")
 
 if __name__ == "__main__":
     main()

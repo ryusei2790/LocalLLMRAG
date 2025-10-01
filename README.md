@@ -135,3 +135,114 @@ $ python query.py
 
 ## ライセンス
 このリポジトリ自体のライセンスは、含まれるファイルの記載に従います。各モデル/依存ライブラリはそれぞれのライセンスに従ってください。
+
+---
+
+## SSHでクラウドGPUを使う場合（環境設定）
+クラウド上のGPUインスタンス（例: Ubuntu 22.04 + NVIDIA GPU）にSSH接続して実行する手順です。
+
+### 0) 前提
+- GPU対応ドライバ/NVIDIA Container Toolkit などは各クラウドの手順に従ってセットアップ
+- セキュリティグループ/ファイアウォールで必要なポート（例: 22/6333）を開放
+
+### 1) 接続
+```bash
+# 例: 固定IP 203.0.113.10 のGPU VMに接続
+ssh ubuntu@<your IP> -i ~/.ssh/your_key.pem
+```
+
+### 2) 必要パッケージ
+```bash
+sudo apt-get update
+sudo apt-get install -y git python3-venv build-essential
+```
+
+### 3) リポジトリ配置と仮想環境
+```bash
+# サーバにコードを配置（ローカルからアップロード例）
+scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG ubuntu@203.0.113.10:~/
+
+git clone https://github.com/ryusei2790/LocalLLMRAG.git
+
+ssh ubuntu@203.0.113.10
+cd ~/LocalLLMRAG
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 4) 依存インストール（GPU版PyTorch）
+`requirements.txt` には `torch==2.4.0` が含まれます。GPUを使う場合はCUDAに合ったPyTorchビルドを上書きインストールしてください。
+
+```bash
+# まず通常の依存を入れる
+pip install -U pip
+pip install -r requirements.txt
+
+pip install qdrant_client
+pip install sentence_transformers
+pip install pypdf
+pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+
+
+
+# CUDA 12.1 環境の例（環境に合わせて変更）
+# 公式ホイール: https://pytorch.org/get-started/locally/
+pip install --force-reinstall --index-url https://download.pytorch.org/whl/cu121 torch==2.4.0 torchvision torchaudio
+
+# 動作確認
+python - <<'PY'
+import torch
+print('torch', torch.__version__, 'cuda:', torch.cuda.is_available())
+print('device_count:', torch.cuda.device_count())
+PY
+```
+
+- `cuda: True` かつ GPU が1つ以上認識されればOK
+- 複数GPUのうち使用するものを限定したい場合は `CUDA_VISIBLE_DEVICES=0` などを設定
+
+### 5) モデル/キャッシュの永続化（任意）
+サーバ再作成時の再ダウンロードを避けるため、Hugging Faceのキャッシュを永続ディレクトリに設定可能です。
+```bash
+mkdir -p ~/hf-cache
+export HF_HOME=~/hf-cache
+export HF_HUB_CACHE=~/hf-cache
+export TRANSFORMERS_CACHE=~/hf-cache
+# 必要に応じ .bashrc に追記
+```
+
+### 6) Qdrant の配置方針
+- 推奨: GPUサーバ上でQdrantも同居させる
+```bash
+# サーバ上でQdrant起動（永続ボリュームをローカルディレクトリに割当）
+sudo docker run -d --name qdrant -p 6333:6333 -p 6334:6334 \
+  -v $HOME/qdrant_storage:/qdrant/storage qdrant/qdrant:latest
+
+```
+- 既存ローカルPCのQdrantを使う場合（逆トンネル）:
+  - サーバ→ローカルへ 6333 を転送して、サーバ側から `127.0.0.1:6333` でローカルQdrantに届くようにします
+```bash
+# ローカルPC側で実行（203.0.113.10 はサーバ）
+ssh -N -R 6333:127.0.0.1:6333 ubuntu@203.0.113.10 -i ~/.ssh/your_key.pem
+```
+  - `config.py` の `QdrantCfg.host` を `127.0.0.1` のままでOK（サーバ側プロセス視点でローカル転送先を参照）
+
+### 7) ドキュメント投入と実行
+```bash
+# docs をサーバへコピー（ローカル→サーバ）
+scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG/docs ubuntu@203.0.113.10:~/LocalLLMRAG/
+
+# 取り込み（サーバ側）
+cd ~/LocalLLMRAG
+source venv/bin/activate
+python ingest.py
+
+# 推論（サーバ側）
+python query.py
+```
+
+### 8) モデルパス/精度の調整
+- `config.py` の `LLMCfg.model_path` をサーバ上のパス（またはHF名）に変更
+- メモリに応じて `LLMCfg.dtype` を `float16`/`bfloat16` に変更
+- 生成長が大きい場合は `max_new_tokens` を下げるとメモリ削減

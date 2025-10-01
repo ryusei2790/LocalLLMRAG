@@ -181,15 +181,16 @@ pip install -r requirements.txt
 pip install qdrant_client
 pip install sentence_transformers
 pip install pypdf
+pip install accelerate
 pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
 
 
 
 
 # CUDA 12.1 環境の例（環境に合わせて変更）
 # 公式ホイール: https://pytorch.org/get-started/locally/
-pip install --force-reinstall --index-url https://download.pytorch.org/whl/cu121 torch==2.4.0 torchvision torchaudio
+# pip install --force-reinstall --index-url https://download.pytorch.org/whl/cu121 torch==2.4.0 torchvision torchaudio
 
 # 動作確認
 python - <<'PY'
@@ -224,7 +225,7 @@ sudo docker run -d --name qdrant -p 6333:6333 -p 6334:6334 \
   - サーバ→ローカルへ 6333 を転送して、サーバ側から `127.0.0.1:6333` でローカルQdrantに届くようにします
 ```bash
 # ローカルPC側で実行（203.0.113.10 はサーバ）
-ssh -N -R 6333:127.0.0.1:6333 ubuntu@203.0.113.10 -i ~/.ssh/your_key.pem
+
 ```
   - `config.py` の `QdrantCfg.host` を `127.0.0.1` のままでOK（サーバ側プロセス視点でローカル転送先を参照）
 

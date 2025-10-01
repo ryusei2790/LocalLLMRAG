@@ -115,7 +115,8 @@ def main():
 
     msgs = build_prompt(query_text, contexts)
     tok, model = load_llm()
-    answer = chat(model, tok, msgs)
+    # answer = chat(model, tok, msgs)
+    answer = chat(model, tok)
     print("\n=== 回答 ===\n")
     print(answer)
 

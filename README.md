@@ -147,7 +147,7 @@ $ python query.py
 
 ### 1) 接続
 ```bash
-# 例: 固定IP 203.0.113.10 のGPU VMに接続
+# 例: 固定IP  のGPU VMに接続
 ssh ubuntu@<your IP> -i ~/.ssh/your_key.pem
 ```
 
@@ -160,11 +160,11 @@ sudo apt-get install -y git python3-venv build-essential
 ### 3) リポジトリ配置と仮想環境
 ```bash
 # サーバにコードを配置（ローカルからアップロード例）
-scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG ubuntu@203.0.113.10:~/
+# scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG ubuntu@yourCloutGCPserverIP:~/
 
 git clone https://github.com/ryusei2790/LocalLLMRAG.git
 
-ssh ubuntu@203.0.113.10
+#ssh ubuntu@IP
 cd ~/LocalLLMRAG
 python3 -m venv venv
 source venv/bin/activate

@@ -26,7 +26,7 @@ def search(
     client: QdrantClient,
     emb_model: SentenceTransformer,
     query: str,
-    top_k: int = 5,
+    top_k: int = 2,
     source_filter: str = None
 ) -> List[Tuple[float, dict]]:
     qvec = emb_model.encode([query], normalize_embeddings=EMB.normalize)[0]

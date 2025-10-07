@@ -17,6 +17,7 @@ class QdrantCfg:
 @dataclass
 class LLMCfg:
     model_path: str = "Qwen/Qwen2.5-0.5B-Instruct"  # ローカルLLMパス
+    #model_path: str = "Qwen/Qwen2.5-7B-Instruct"　#業務使用推奨モデル
     dtype: str = "auto"                # "auto" / "bfloat16" / "float16"
     max_new_tokens: int = 512
     temperature: float = 0.7

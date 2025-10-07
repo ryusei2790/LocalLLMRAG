@@ -148,7 +148,7 @@ $ python query.py
 ### 1) 接続
 ```bash
 # 例: 固定IP  のGPU VMに接続
-ssh ubuntu@<your IP> -i ~/.ssh/your_key.pem
+ssh ubuntu@<your IP> -i ~/.ssh/<your SSH key>
 ```
 
 ### 2) 必要パッケージ
@@ -162,10 +162,12 @@ sudo apt-get install -y git python3-venv build-essential
 # サーバにコードを配置（ローカルからアップロード例）
 # scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG ubuntu@yourCloutGCPserverIP:~/
 
+cd <your instance>
 git clone https://github.com/ryusei2790/LocalLLMRAG.git
 
 #ssh ubuntu@IP
-cd ~/LocalLLMRAG
+
+cd LocalLLMRAG
 python3 -m venv venv
 source venv/bin/activate
 ```
@@ -232,7 +234,10 @@ sudo docker run -d --name qdrant -p 6333:6333 -p 6334:6334 \
 ### 7) ドキュメント投入と実行
 ```bash
 # docs をサーバへコピー（ローカル→サーバ）
-scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG/docs ubuntu@203.0.113.10:~/LocalLLMRAG/
+scp -r <your environments>/docs ubuntu@<インスタンスのIPアドレス>:~/LocalLLMRAG/
+
+#scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG/docs ubuntu@146-235-239-191:~/ryusei-LoRA-test/LocalLLMRAG
+
 
 # 取り込み（サーバ側）
 cd ~/LocalLLMRAG

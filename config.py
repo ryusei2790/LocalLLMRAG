@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class EmbeddingCfg:
     # safetensors 版を使用（GPU 対応）
-    model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2" #Qdrant/multilingual-e5-large-onnx こっちを本番環境で使う
     batch_size: int = 64
     normalize: bool = True   # コサイン類似を使う場合 True 推奨
 
@@ -16,8 +16,11 @@ class QdrantCfg:
 
 @dataclass
 class LLMCfg:
-    model_path: str = "Qwen/Qwen2.5-0.5B-Instruct"  # ローカルLLMパス
-    #model_path: str = "Qwen/Qwen2.5-7B-Instruct"　#業務使用推奨モデル
+    # HuggingFaceから直接ダウンロード（初回のみ時間がかかる）
+    model_path: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    # ローカルパスの場合: "Qwen/Qwen2.5-0.5B-Instruct" (相対パス)
+    # HuggingFace Hubの場合: "Qwen/Qwen2.5-0.5B-Instruct" (自動ダウンロード)
+    # 本番推奨: "tokyotech-llm/Swallow-MS-7b-v0.1"
     dtype: str = "auto"                # "auto" / "bfloat16" / "float16"
     max_new_tokens: int = 512
     temperature: float = 0.7

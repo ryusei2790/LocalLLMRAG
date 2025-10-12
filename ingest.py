@@ -5,7 +5,7 @@ from typing import List, Dict
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 from sentence_transformers import SentenceTransformer
-from pypdf import PdfReader
+import pdfplumber
 
 from config import EmbeddingCfg, QdrantCfg, ChunkCfg
 from utils_chunk import greedy_chunk_by_tokens
@@ -15,13 +15,15 @@ QDR = QdrantCfg()
 CH  = ChunkCfg()
 
 def load_text_from_file(path: str) -> str:
-    if path.lower().endswith((".txt", ".md")):
+    if path.lower().endswith((".txt", ".md", ".json")):
         return open(path, "r", encoding="utf-8", errors="ignore").read()
     if path.lower().endswith(".pdf"):
         out = []
-        reader = PdfReader(path)
-        for page in reader.pages:
-            out.append(page.extract_text() or "")
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    out.append(text)
         return "\n".join(out)
     return ""
 
@@ -29,7 +31,7 @@ def discover_files(root: str) -> List[str]:
     files = []
     for dirpath, _, filenames in os.walk(root):
         for fn in filenames:
-            if fn.lower().endswith((".txt", ".md", ".pdf")):
+            if fn.lower().endswith((".txt", ".md", ".pdf", ".json")):
                 files.append(os.path.join(dirpath, fn))
     return files
 
@@ -66,7 +68,7 @@ def upsert_chunks(
     client.upsert(collection_name=collection, points=points)
 
 def main():
-    src_dir = "docs"   # ← 学習・検索対象の文書ディレクトリ
+    src_dir = "docs"   # ← 学習・検索対象の文書ディレクトリ ここを変数で受け取って代入する、受け取る先はフロントエンド側からのリクエストから取得する
     files = discover_files(src_dir)
     if not files:
         print("No files found in ./docs. Put .txt/.md/.pdf files there.")

@@ -1,254 +1,355 @@
-# Local LLM RAG（ローカル知識ベース検索 + 生成）
+# LocalLLMRAG
 
-このリポジトリは、ローカルの埋め込みモデル + Qdrant ベクタDB + ローカル LLM（例: Qwen 系）で、手元ドキュメントに対するRAG（Retrieval-Augmented Generation）をシンプルに実行するための最小構成です。
+ローカルLLMとベクトルデータベース（Qdrant）を使用したRAG（Retrieval-Augmented Generation）システムです。PDFやテキストファイルをアップロードし、その内容に基づいて質問に回答するFlask APIアプリケーションです。
 
-- 文書取り込み: `ingest.py` が `docs/` 配下の `.txt/.md/.pdf` を分割・埋め込みし、Qdrant に投入
-- 検索 + 生成: `query.py` が埋め込み検索の上位文脈をもとにローカル LLM へプロンプト
-- 設定: `config.py` で埋め込み/DB/LLM/チャンクの各種設定を一括管理
+## 📋 目次
 
----
+- [機能](#機能)
+- [システム構成](#システム構成)
+- [セットアップ](#セットアップ)
+- [使い方](#使い方)
+- [API仕様](#api仕様)
+- [設定のカスタマイズ](#設定のカスタマイズ)
 
-## 前提条件
-- OS: macOS (他OSでもPython + Qdrantが動作すれば可)
-- Python: 3.9 以上推奨（本環境は 3.13）
-- GPU: 任意（CPUでも可、LLMサイズ/速度に影響）
-- Qdrant: ローカルで起動（Docker 推奨）
+## 🚀 機能
 
-### Qdrant の起動（Docker 例）
+- **文書の埋め込み**: PDFやテキストファイルをベクトル化してQdrantに保存
+- **質問応答**: 保存された文書から関連情報を検索し、LLMが回答を生成
+- **複数ファイル対応**: 一度に複数のファイルをアップロード可能
+- **ローカル実行**: すべての処理がローカル環境で完結（外部APIへの通信不要）
+- **高速キャッシュ**: モデルを初回ロード後にメモリに保持して高速化
+
+## 🏗️ システム構成
+
+- **埋め込みモデル**: `sentence-transformers/all-MiniLM-L6-v2`（384次元）
+- **LLM**: `Qwen2.5-0.5B-Instruct`（ローカル）
+- **ベクトルDB**: Qdrant（ローカル）
+- **Webフレームワーク**: Flask
+- **チャンク分割**: トークンベースの贪欲分割（オーバーラップ付き）
+
+## 📦 セットアップ
+
+### 1. 必要な環境
+
+- Python 3.10以上
+- 十分なメモリ（LLMロードに最低4GB推奨）
+- Qdrantサーバー
+
+### 2. 依存パッケージのインストール
+
 ```bash
-# 6333(HTTP) と 6334(gRPC) を公開
-docker run -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage qdrant/qdrant:latest
-```
-起動後、`http://localhost:6333/dashboard` にアクセス可能です。
-
----
-
-## セットアップ
-### 1) 仮想環境
-```bash
-cd /Users/ryusei/project/mr_seino/LocalLLMRAG
+# 仮想環境の作成（推奨）
 python3 -m venv venv
-source venv/bin/activate
-```
+source venv/bin/activate  # Windowsの場合: venv\Scripts\activate
 
-### 2) 依存ライブラリのインストール
-```bash
-pip install -U pip
+# 依存パッケージのインストール
 pip install -r requirements.txt
 ```
 
-初回は埋め込みモデルやトークナイザ等を自動でダウンロードします（Hugging Faceのキャッシュ使用）。
+### 3. Qdrantの起動
 
----
-
-## ディレクトリ構成（主なもの）
-- `docs/`: 取り込み対象のドキュメント（`.txt/.md/.pdf`）を配置
-- `ingest.py`: 文書分割・埋め込み生成・Qdrant への upsert
-- `query.py`: 検索→プロンプト組み立て→ローカル LLM で回答生成
-- `utils_chunk.py`: ざっくりトークン長ベースの貪欲チャンク分割
-- `config.py`: 各種設定（埋め込み/Qdrant/LLM/チャンク）
-- `qdrant_storage/`: Qdrant 永続化データ（Docker の -v 連携時）
-- `Qwen/`: サンプルのトークナイザ等（実運用は任意のローカル LLM へ差し替え）
-
----
-
-## 設定
-すべて `config.py` で編集できます。
-
-- EmbeddingCfg
-  - `model_name`: 例 `"BAAI/bge-m3"` または `"intfloat/multilingual-e5-large"`
-  - `batch_size`, `normalize`: エンコード設定
-- QdrantCfg
-  - `host`, `port`, `collection`: 例 `127.0.0.1:6333`, `rag_docs`
-- LLMCfg
-  - `model_path`: ローカル LLM のパスまたは Hugging Face リポ名
-    - 例: `"Qwen/Qwen2.5-0.5B-Instruct"`（HFから取得）
-    - 例: ローカルフォルダ（事前に重みを配置）
-  - `dtype`: `auto`/`bfloat16`/`float16`
-  - `max_new_tokens`, `temperature`, `top_p`: 生成パラメータ
-- ChunkCfg
-  - `target_tokens`, `overlap_tokens`, `min_chars`: チャンク分割の粒度
-
----
-
-## 使い方
-### 1) ドキュメントを配置
-`docs/` フォルダに `.txt/.md/.pdf` を入れます。
-
-### 2) 取り込み（埋め込み＋DB upsert）
-```bash
-python ingest.py
-```
-- `docs/` 以下を再帰的に探索し、文書を文単位で分割→チャンク化→埋め込み→Qdrant へ upsert します。
-- コレクションが未作成の場合は自動作成（ベクトル次元は埋め込みモデルから自動判定）。
-
-### 3) 検索 + 生成
-```bash
-python query.py
-```
-- 対話プロンプトが表示されるので質問を入力
-- Top-K（デフォルト 5）の文脈をプロンプトに詰め、ローカル LLM が回答します
-
----
-
-## 実行例
-```bash
-$ python ingest.py
-[INGEST] docs/greenheardRAG.pdf -> 42 chunks
-Done. Total chunks: 42
-
-$ python query.py
-質問を入力してください: この資料のRAGの流れを教えて
-
-=== 回答 ===
-（モデル出力が表示）
-```
-
----
-
-## LLM の準備
-- デフォルトでは `LLMCfg.model_path = "Qwen/Qwen2.5-0.5B-Instruct"` を参照します。
-- 完全ローカルで通信を遮断したい場合は、ローカルにダウンロード済みのモデルディレクトリを指定してください。
-  - 例: `LLMCfg.model_path = "/path/to/Qwen2.5-0.5B-Instruct"`
-- Qwen 以外の CausalLM 互換モデルでも動作します（`transformers` に準拠）。
-
----
-
-## よくある質問（FAQ）/ トラブルシューティング
-- Q: Qdrant に接続できない
-  - A: Docker で Qdrant を起動し、`config.py` の `QdrantCfg.host/port` を確認してください。
-- Q: 取り込み後にヒットしない
-  - A: `docs/` が空でないか、PDF からテキスト抽出できているか、`ChunkCfg.min_chars` が厳しすぎないか確認してください。
-- Q: モデルが見つからない/遅い
-  - A: 初回はモデル等を自動取得します。完全ローカルにしたい場合は事前にダウンロードし `model_path` をローカルパスに設定。軽量モデルへ切替も検討。
-- Q: メモリ不足
-  - A: `dtype` を `float16` にする、`max_new_tokens` を下げる、より小さい LLM を使う、CPU 実行するなどを検討。
-
----
-
-## 開発メモ
-- チャンク分割は `utils_chunk.greedy_chunk_by_tokens` を使用。日本語の句点などで文分割し、目標トークン長・オーバーラップを考慮して結合します。
-- 近傍探索は Qdrant のコサイン類似度。メタデータとして `source`, `chunk_id` を保存しています。
-- プロンプトは根拠（出典番号）を最後に列挙する方針で組み立てています。
-
----
-
-## ライセンス
-このリポジトリ自体のライセンスは、含まれるファイルの記載に従います。各モデル/依存ライブラリはそれぞれのライセンスに従ってください。
-
----
-
-## SSHでクラウドGPUを使う場合（環境設定）
-クラウド上のGPUインスタンス（例: Ubuntu 22.04 + NVIDIA GPU）にSSH接続して実行する手順です。
-
-### 0) 前提
-- GPU対応ドライバ/NVIDIA Container Toolkit などは各クラウドの手順に従ってセットアップ
-- セキュリティグループ/ファイアウォールで必要なポート（例: 22/6333）を開放
-
-### 1) 接続
-```bash
-# 例: 固定IP  のGPU VMに接続
-ssh ubuntu@<your IP> -i ~/.ssh/<your SSH key>
-```
-
-### 2) 必要パッケージ
-```bash
-sudo apt-get update
-sudo apt-get install -y git python3-venv build-essential
-```
-
-### 3) リポジトリ配置と仮想環境
-```bash
-# サーバにコードを配置（ローカルからアップロード例）
-# scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG ubuntu@yourCloutGCPserverIP:~/
-
-cd <your instance>
-git clone https://github.com/ryusei2790/LocalLLMRAG.git
-
-#ssh ubuntu@IP
-
-cd LocalLLMRAG
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 4) 依存インストール（GPU版PyTorch）
-`requirements.txt` には `torch==2.4.0` が含まれます。GPUを使う場合はCUDAに合ったPyTorchビルドを上書きインストールしてください。
+Dockerを使用する場合：
 
 ```bash
-# まず通常の依存を入れる
-pip install -U pip
-pip install -r requirements.txt
-
-pip install qdrant_client
-pip install sentence_transformers
-pip install pypdf
-pip install accelerate
-pip install --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-
-
-
-
-# CUDA 12.1 環境の例（環境に合わせて変更）
-# 公式ホイール: https://pytorch.org/get-started/locally/
-# pip install --force-reinstall --index-url https://download.pytorch.org/whl/cu121 torch==2.4.0 torchvision torchaudio
-
-# 動作確認
-python - <<'PY'
-import torch
-print('torch', torch.__version__, 'cuda:', torch.cuda.is_available())
-print('device_count:', torch.cuda.device_count())
-PY
+docker run -p 6333:6333 -p 6334:6334 \
+    -v $(pwd)/qdrant_storage:/qdrant/storage \
+    qdrant/qdrant
 ```
 
-- `cuda: True` かつ GPU が1つ以上認識されればOK
-- 複数GPUのうち使用するものを限定したい場合は `CUDA_VISIBLE_DEVICES=0` などを設定
+または、Qdrantをローカルにインストールして起動してください。
 
-### 5) モデル/キャッシュの永続化（任意）
-サーバ再作成時の再ダウンロードを避けるため、Hugging Faceのキャッシュを永続ディレクトリに設定可能です。
+### 4. LLMモデルの準備
+
+プロジェクトルートに`Qwen/`ディレクトリが必要です。モデルファイルがない場合は、HuggingFaceからダウンロードしてください：
+
 ```bash
-mkdir -p ~/hf-cache
-export HF_HOME=~/hf-cache
-export HF_HUB_CACHE=~/hf-cache
-export TRANSFORMERS_CACHE=~/hf-cache
-# 必要に応じ .bashrc に追記
+# HuggingFace CLIでダウンロード（例）
+huggingface-cli download Qwen/Qwen2.5-0.5B-Instruct --local-dir Qwen/Qwen2.5-0.5B-Instruct
 ```
 
-### 6) Qdrant の配置方針
-- 推奨: GPUサーバ上でQdrantも同居させる
+または`config.py`で別のモデルパスを指定できます。
+
+## 💡 使い方
+
+### 1. Flaskサーバーの起動
+
 ```bash
-# サーバ上でQdrant起動（永続ボリュームをローカルディレクトリに割当）
-sudo docker run -d --name qdrant -p 6333:6333 -p 6334:6334 \
-  -v $HOME/qdrant_storage:/qdrant/storage qdrant/qdrant:latest
-
+python app.py
 ```
-- 既存ローカルPCのQdrantを使う場合（逆トンネル）:
-  - サーバ→ローカルへ 6333 を転送して、サーバ側から `127.0.0.1:6333` でローカルQdrantに届くようにします
+
+サーバーは`http://localhost:1234`で起動します。
+
+### 2. 文書のアップロード（埋め込み）
+
+PDFやテキストファイルをベクトル化してQdrantに保存します。
+
+**curlの例:**
+
 ```bash
-# ローカルPC側で実行（203.0.113.10 はサーバ）
-
+curl -X POST http://localhost:1234/embedd \
+  -F "files=@docs/sample.pdf" \
+  -F "files=@docs/document.txt"
 ```
-  - `config.py` の `QdrantCfg.host` を `127.0.0.1` のままでOK（サーバ側プロセス視点でローカル転送先を参照）
 
-### 7) ドキュメント投入と実行
+**Pythonの例:**
+
+```python
+import requests
+
+url = "http://localhost:1234/embedd"
+files = [
+    ('files', open('docs/sample.pdf', 'rb')),
+    ('files', open('docs/document.txt', 'rb'))
+]
+
+response = requests.post(url, files=files)
+print(response.json())
+```
+
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "message": "ファイルの埋め込みが完了しました",
+  "processed_files": 2,
+  "file_names": ["sample.pdf", "document.txt"],
+  "total_chunks": 45
+}
+```
+
+### 3. 質問の送信
+
+アップロードした文書に基づいて質問に回答します。
+
+**curlの例:**
+
 ```bash
-# docs をサーバへコピー（ローカル→サーバ）
-scp -r <your environments>/docs ubuntu@<インスタンスのIPアドレス>:~/LocalLLMRAG/
-
-#scp -r /Users/ryusei/project/mr_seino/LocalLLMRAG/docs ubuntu@146-235-239-191:~/ryusei-LoRA-test/LocalLLMRAG
-
-
-# 取り込み（サーバ側）
-cd ~/LocalLLMRAG
-source venv/bin/activate
-python ingest.py
-
-# 推論（サーバ側）
-python query.py
+curl -X POST http://localhost:1234/question \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "この文書の主なテーマは何ですか？",
+    "top_k": 5
+  }'
 ```
 
-### 8) モデルパス/精度の調整
-- `config.py` の `LLMCfg.model_path` をサーバ上のパス（またはHF名）に変更
-- メモリに応じて `LLMCfg.dtype` を `float16`/`bfloat16` に変更
-- 生成長が大きい場合は `max_new_tokens` を下げるとメモリ削減
+**Pythonの例:**
+
+```python
+import requests
+
+url = "http://localhost:1234/question"
+data = {
+    "question": "この文書の主なテーマは何ですか？",
+    "top_k": 5
+}
+
+response = requests.post(url, json=data)
+result = response.json()
+
+print(f"質問: {result['question']}")
+print(f"回答: {result['answer']}")
+print(f"参照文書数: {result['num_contexts']}")
+```
+
+**レスポンス例:**
+
+```json
+{
+  "success": true,
+  "question": "この文書の主なテーマは何ですか？",
+  "answer": "この文書の主なテーマは、ローカルLLMを活用したRAGシステムの構築です。\n主なポイントは以下の通りです：\n- ベクトル検索による関連情報の取得\n- コンテキストを用いた正確な回答生成\n- ローカル環境での完結した処理\n\n参照: [1],[2],[3]",
+  "num_contexts": 5,
+  "contexts": [
+    {
+      "index": 1,
+      "source": "sample.pdf",
+      "title": "",
+      "page": "",
+      "chunk_id": 0,
+      "text_preview": "RAGシステムは、大規模言語モデルと情報検索を組み合わせた技術です..."
+    }
+  ]
+}
+```
+
+### 4. ヘルスチェック
+
+サーバーの稼働状態を確認します。
+
+```bash
+curl http://localhost:1234/health
+```
+
+**レスポンス:**
+
+```json
+{
+  "status": "ok",
+  "message": "Flask RAG API is running"
+}
+```
+
+## 📖 API仕様
+
+### `POST /embedd`
+
+文書をアップロードしてベクトル化します。
+
+**リクエスト:**
+- Content-Type: `multipart/form-data`
+- Body: `files` フィールドに1つ以上のファイル
+
+**対応ファイル形式:**
+- `.txt`
+- `.md`
+- `.pdf`
+- `.json`
+
+**レスポンス:**
+```json
+{
+  "success": boolean,
+  "message": string,
+  "processed_files": number,
+  "file_names": string[],
+  "total_chunks": number
+}
+```
+
+### `POST /question`
+
+質問を送信して回答を取得します。
+
+**リクエスト:**
+- Content-Type: `application/json`
+- Body:
+  ```json
+  {
+    "question": "質問文（必須）",
+    "top_k": 5,  // 取得する関連文書数（任意、デフォルト5）
+    "source_filter": "sample.pdf"  // 特定ファイルに限定（任意）
+  }
+  ```
+
+**レスポンス:**
+```json
+{
+  "success": boolean,
+  "question": string,
+  "answer": string,
+  "num_contexts": number,
+  "contexts": [
+    {
+      "index": number,
+      "source": string,
+      "title": string,
+      "page": string,
+      "chunk_id": number,
+      "text_preview": string
+    }
+  ]
+}
+```
+
+### `GET /health`
+
+サーバーのヘルスチェックを行います。
+
+**レスポンス:**
+```json
+{
+  "status": "ok",
+  "message": "Flask RAG API is running"
+}
+```
+
+## ⚙️ 設定のカスタマイズ
+
+`config.py`で各種設定を変更できます。
+
+### 埋め込みモデルの設定
+
+```python
+@dataclass
+class EmbeddingCfg:
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    batch_size: int = 64
+    normalize: bool = True
+```
+
+### Qdrantの設定
+
+```python
+@dataclass
+class QdrantCfg:
+    host: str = "127.0.0.1"
+    port: int = 6333
+    collection: str = "rag_docs"
+```
+
+### LLMの設定
+
+```python
+@dataclass
+class LLMCfg:
+    model_path: str = "Qwen/Qwen2.5-0.5B-Instruct"  # ローカルLLMパス
+    # model_path: str = "Qwen/Qwen2.5-7B-Instruct"  # より高性能なモデル
+    dtype: str = "auto"  # "auto" / "bfloat16" / "float16"
+    max_new_tokens: int = 512
+    temperature: float = 0.7
+    top_p: float = 0.9
+```
+
+### チャンク分割の設定
+
+```python
+@dataclass
+class ChunkCfg:
+    target_tokens: int = 400      # チャンクの目標トークン数
+    overlap_tokens: int = 60      # オーバーラップするトークン数
+    min_chars: int = 150          # 最小文字数
+```
+
+## 📂 ファイル構成
+
+```
+LocalLLMRAG/
+├── app.py              # Flaskアプリケーション本体
+├── config.py           # 設定ファイル
+├── ingest.py           # 文書の読み込みと埋め込み処理
+├── query.py            # 検索と回答生成処理
+├── utils_chunk.py      # チャンク分割ユーティリティ
+├── requirements.txt    # 依存パッケージリスト
+├── README.md           # このファイル
+├── docs/               # アップロード対象の文書を格納
+├── Qwen/               # LLMモデルファイル
+└── qdrant_storage/     # Qdrantのデータ保存先
+```
+
+## 🔧 トラブルシューティング
+
+### Qdrantに接続できない
+
+- Qdrantサーバーが起動しているか確認してください
+- `config.py`のホストとポート設定を確認してください
+
+### メモリ不足エラー
+
+- より小さいLLMモデルを使用してください（0.5B版など）
+- `config.py`で`dtype`を`"float16"`に設定してメモリ使用量を削減できます
+
+### モデルのロードに時間がかかる
+
+- 初回のみ時間がかかります（数分程度）
+- 2回目以降はキャッシュされるため高速です
+
+## 📝 ライセンス
+
+このプロジェクトはMITライセンスの下で公開されています。
+
+## 🤝 コントリビューション
+
+プルリクエストや Issue の報告を歓迎します！
+
+

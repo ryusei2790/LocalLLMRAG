@@ -87,3 +87,8 @@ htmlcov/
 dmypy.json
 
 Qwen/
+
+docs/
+*.pdf
+*.txt
+queryResult.txt

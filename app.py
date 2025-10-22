@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 from sentence_transformers import SentenceTransformer
-from config import EmbeddingCfg, QdrantCfg, ChunkCfg
+from config import EmbeddingCfg, QdrantCfg, ChunkCfg, LLMCfg
 from ingest import (
     load_text_from_file,
     ensure_collection,
@@ -30,6 +30,7 @@ app = Flask(__name__)
 EMB = EmbeddingCfg()
 QDR = QdrantCfg()
 CH = ChunkCfg()
+LLM = LLMCfg()
 
 # アップロード許可する拡張子
 ALLOWED_EXTENSIONS = {'txt', 'md', 'pdf', 'json'}
@@ -51,8 +52,12 @@ def get_cached_llm():
     """LLMとトークナイザーをキャッシュして再利用"""
     global _llm_cache, _tokenizer_cache
     if _llm_cache is None or _tokenizer_cache is None:
-        print("[INFO] Loading LLM model (this may take a while)...")
-        _tokenizer_cache, _llm_cache = load_llm()
+        if LLM.model_type == "openai":
+            print("[INFO] Using OpenAI API model...")
+            _tokenizer_cache, _llm_cache = None, None
+        else:
+            print("[INFO] Loading local LLM model (this may take a while)...")
+            _tokenizer_cache, _llm_cache = load_llm()
     return _tokenizer_cache, _llm_cache
 
 def allowed_file(filename: str) -> bool:
@@ -266,6 +271,7 @@ def answer_question():
         # LLMで回答生成
         print("[INFO] Generating answer...")
         answer = chat(llm_model, tokenizer, messages)
+        print("結果取得完了")
         
         # レスポンスを整形
         context_info = []
@@ -464,12 +470,12 @@ def health_check():
     }), 200
 
 if __name__ == '__main__':
-    # # アプリ起動時にモデルを事前ロード
-    # print("[STARTUP] Pre-loading embedder model...")
-    # get_cached_embedder()
-    # print("[STARTUP] Pre-loading LLM model...")
-    # get_cached_llm()
-    # print("[STARTUP] All models loaded. Starting server...")
+    # アプリ起動時にモデルを事前ロード
+    print("[STARTUP] Pre-loading embedder model...")
+    get_cached_embedder()
+    print("[STARTUP] Pre-loading LLM model...")
+    get_cached_llm()
+    print("[STARTUP] All models loaded. Starting server...")
     
     app.run(host='0.0.0.0', port=1234, debug=True)
 

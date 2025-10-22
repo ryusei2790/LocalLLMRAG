@@ -8,6 +8,7 @@ import torch
 import math
 import re
 import time
+import os
 
 from config import EmbeddingCfg, QdrantCfg, LLMCfg
 
@@ -241,6 +242,11 @@ def build_prompt(query: str, contexts: List[Dict], tok: AutoTokenizer, ctx_token
 # LLM 読み込み
 # =========================================
 def load_llm():
+    if LLM.model_type == "openai":
+        # OpenAI APIの場合はNoneを返す（chat関数で直接APIを呼び出す）
+        return None, None
+    
+    # ローカルモデルの場合
     tok = AutoTokenizer.from_pretrained(LLM.model_path, use_fast=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
@@ -256,6 +262,10 @@ def load_llm():
 # チャット生成
 # =========================================
 def chat(model, tok, messages: List[Dict]) -> str:
+    if LLM.model_type == "openai":
+        return chat_openai(messages)
+    
+    # ローカルモデルの場合
     text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = tok(text, return_tensors="pt")
     # MPSは half 未対応ケースがあるため to() は安全に
@@ -286,6 +296,39 @@ def chat(model, tok, messages: List[Dict]) -> str:
             answer = parts[1].strip()
     
     return answer.strip()
+
+# =========================================
+# OpenAI API チャット生成
+# =========================================
+def chat_openai(messages: List[Dict]) -> str:
+    try:
+        import openai
+        
+        # APIキーを設定
+        api_key = LLM.openai_api_key or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY environment variable or configure in config.py")
+        
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url=LLM.openai_base_url if LLM.openai_base_url else None
+        )
+        
+        # OpenAI APIを呼び出し
+        response = client.chat.completions.create(
+            model=LLM.openai_model,
+            messages=messages,
+            max_tokens=LLM.max_new_tokens,
+            temperature=LLM.temperature,
+            top_p=LLM.top_p
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except ImportError:
+        raise ImportError("OpenAI library not installed. Run: pip install openai")
+    except Exception as e:
+        raise Exception(f"OpenAI API error: {str(e)}")
 
 # =========================================
 # メイン処理
